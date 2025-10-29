@@ -18,6 +18,8 @@ namespace SkyNESEmu
 
         public const int STACK_START_ADDRESS = 0x0100;
 
+        public uint Cycles = 0;
+
         /// <summary>
         /// Program Counter.
         /// </summary>
@@ -192,10 +194,9 @@ namespace SkyNESEmu
             Tracelogger.LogOpcode(opcode);
             PC++;
 
-            int cycles;
+            int cycles = 0;
             ushort addressBus;
             bool pageCrossed;
-
 
             switch (opcode)
             {
@@ -302,7 +303,7 @@ namespace SkyNESEmu
 
                 case 0x28:  // PLP (pull processor status from stack)
                     _statusFlags = (byte)(PullStack() & 0xEF | 0x20); // clear B flag when pulling, set U flag
-                    cycles = 3;
+                    cycles = 4;
                     break;
 
                 case 0x29:  // AND Immediate (logical AND a register with operand)
@@ -439,7 +440,7 @@ namespace SkyNESEmu
 
                 case 0x69:  // ADC Immediate (add with carry operand to a register)
                     AddressingModeImmediate();
-                    ADC((byte)addressBus);
+                    ADC(Read(addressBus));
                     cycles = 2;
                     break;
 
@@ -681,7 +682,7 @@ namespace SkyNESEmu
 
                 case 0xE9:  // SBC Immediate (subtract with carry operand from a register)
                     AddressingModeImmediate();
-                    SBC((byte)addressBus);
+                    SBC(Read(addressBus));
                     cycles = 2;
                     break;
 
@@ -708,6 +709,8 @@ namespace SkyNESEmu
                 default:
                     throw new Exception($"Unknown opcode: {opcode:X2}");
             }
+
+            Cycles += (uint)cycles;
 
             void ASL(ushort address, byte value)
             {
@@ -779,21 +782,21 @@ namespace SkyNESEmu
             void ADC(byte value)
             {
                 int sum = A + value + (FlagC ? 1 : 0);
+                FlagV = (~(A ^ value) & (A ^ sum) & 0x80) != 0;
                 FlagC = sum > 0xFF;
-                FlagZ = (sum & 0xFF) == 0;
-                FlagV = (~(A ^ value) & (A ^ (byte)sum) & 0x80) != 0;
-                FlagN = (sum & 0x80) != 0;
                 A = (byte)(sum & 0xFF);
+                FlagN = (A & 0x80) != 0;
+                FlagZ = A == 0;
             }
 
             void SBC(byte value)
             {
                 int diff = A - value - (FlagC ? 0 : 1);
+                FlagV = ((A ^ value) & (A ^ diff) & 0x80) != 0;
                 FlagC = diff >= 0;
-                FlagZ = (diff & 0xFF) == 0;
-                FlagV = ((A ^ value) & (A ^ (byte)diff) & 0x80) != 0;
-                FlagN = (diff & 0x80) != 0;
                 A = (byte)(diff & 0xFF);
+                FlagN = (A & 0x80) != 0;
+                FlagZ = A == 0;
             }
 
             void CMP(byte value)
@@ -915,6 +918,7 @@ namespace SkyNESEmu
             FlagI = true;
             FlagU = true;
             SP = 0xFD;
+            Cycles = 7;
         }
 
         public byte Read(ushort address)

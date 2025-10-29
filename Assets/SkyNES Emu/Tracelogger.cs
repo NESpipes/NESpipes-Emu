@@ -4,11 +4,10 @@ namespace SkyNESEmu
 {
     public static class Tracelogger
     {
+        public static NESCPU EmulatorCPU;
         public static bool Enabled = false;
 
-        public static NESCPU EmulatorCPU;
-
-        private static string[] opcodeNames = new string[256]
+        private static readonly string[] _opcodeNames = new string[256]
         {
             "BRK", "ORA", "HLT", "SLO", "NOP", "ORA", "ASL", "SLO",
             "PHP", "ORA", "ASL", "ANC", "NOP", "ORA", "ASL", "SLO",
@@ -69,10 +68,11 @@ namespace SkyNESEmu
             if (Enabled)
             {
                 string line = string.Format(
-                    "PC:{0:X4} {1:X2} {2} A:{3:X2} X:{4:X2} Y:{5:X2} SP:{6:X2} {7}",
+                    "PC:{0:X4} {1:X2} {2:X2} {3} A:{4:X2} X:{5:X2} Y:{6:X2} SP:{7:X2} {8} Cycles:{9}",
                     EmulatorCPU.PC,
                     opcode,
-                    opcodeNames[opcode],
+                    EmulatorCPU.Read((ushort)(EmulatorCPU.PC + 1)),
+                    _opcodeNames[opcode],
                     EmulatorCPU.A,
                     EmulatorCPU.X,
                     EmulatorCPU.Y,
@@ -86,7 +86,8 @@ namespace SkyNESEmu
                         EmulatorCPU.FlagD ? "D" : "d",
                         EmulatorCPU.FlagI ? "I" : "i",
                         EmulatorCPU.FlagZ ? "Z" : "z",
-                        EmulatorCPU.FlagC ? "C" : "c"));
+                        EmulatorCPU.FlagC ? "C" : "c"),
+                    EmulatorCPU.Cycles);
 
                 Debug.Log(line);
             }
