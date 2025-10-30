@@ -337,7 +337,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 44ac7c3617dffe141a58f93d0206b157, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ROM_FILENAME: 5_Instructions1
+  ROM_FILENAME: 6_Instructions2
+  Cycles: 0
   PC: 0
   A: 0
   X: 0

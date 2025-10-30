@@ -467,9 +467,21 @@ namespace SkyNESEmu
                         cycles = 2;
                     break;
 
+                case 0x75:  // ADC Zero Page, X Indexed (add with carry zero page address plus x index to a register)
+                    AddressingModeZeroPageXIndexed();
+                    ADC(Read(addressBus));
+                    cycles = 4;
+                    break;
+
                 case 0x78:  // SEI (set interrupt disable flag)
                     FlagI = true;
                     cycles = 2;
+                    break;
+
+                case 0x81:  // STA Indirect, X Indexed (store a register into indirect address plus x index)
+                    AddressingModeIndirectXIndexed();
+                    Write(addressBus, A);
+                    cycles = 6;
                     break;
 
                 case 0x84:  // STY Zero Page (store y register into zero page address)
@@ -531,6 +543,18 @@ namespace SkyNESEmu
                     }
                     else
                         cycles = 2;
+                    break;
+
+                case 0x91:  // STA Indirect, Y Indexed (store a register into indirect address plus y index)
+                    AddressingModeIndirectYIndexed();
+                    Write(addressBus, A);
+                    cycles = 6;
+                    break;
+
+                case 0x95:  // STA Zero Page, X Indexed (store a register into zero page address plus x index)
+                    AddressingModeZeroPageXIndexed();
+                    Write(addressBus, A);
+                    cycles = 4;
                     break;
 
                 case 0x98:  // TYA (transfer y register to a register)
@@ -610,6 +634,14 @@ namespace SkyNESEmu
                         cycles = 2;
                     break;
 
+                case 0xB5:  // LDA Zero Page, X Indexed (load zero page address plus x index into a register)
+                    AddressingModeZeroPageXIndexed();
+                    A = Read(addressBus);
+                    FlagZ = A == 0;
+                    FlagN = (A & 0x80) != 0;
+                    cycles = 4;
+                    break;
+
                 case 0xB8:  // CLV (clear overflow flag)
                     FlagV = false;
                     cycles = 2;
@@ -620,7 +652,7 @@ namespace SkyNESEmu
                     A = Read(addressBus);
                     FlagZ = A == 0;
                     FlagN = (A & 0x80) != 0;
-                    cycles = 4 + (pageCrossed ? 1 : 0);
+                    cycles = pageCrossed ? 5 : 4;
                     break;
 
                 case 0xBA:  // TSX (transfer stack pointer to x register)
@@ -635,7 +667,13 @@ namespace SkyNESEmu
                     A = Read(addressBus);
                     FlagZ = A == 0;
                     FlagN = (A & 0x80) != 0;
-                    cycles = 4 + (pageCrossed ? 1 : 0);
+                    cycles = pageCrossed ? 5 : 4;
+                    break;
+
+                case 0xC0:  // CPY Immediate (compare y register with operand)
+                    AddressingModeImmediate();
+                    CPY(Read(addressBus));
+                    cycles = 2;
                     break;
 
                 case 0xC8:  // INY (increment y register)
@@ -670,6 +708,12 @@ namespace SkyNESEmu
 
                 case 0xD8:  // CLD (clear decimal mode flag)
                     FlagD = false;
+                    cycles = 2;
+                    break;
+
+                case 0xE0:  // CPX Immediate (compare x register with operand)
+                    AddressingModeImmediate();
+                    CPX(Read(addressBus));
                     cycles = 2;
                     break;
 
@@ -884,8 +928,8 @@ namespace SkyNESEmu
             void AddressingModeIndirectXIndexed()
             {
                 byte basePointer = Read(PC++);
-                ushort effectivePointer = (ushort)((basePointer + X) & 0xFF);
-                addressBus = (ushort)(Read(effectivePointer) | (Read((ushort)((effectivePointer + 1) & 0xFF)) << 8));
+                ushort pointer = (ushort)(Read((byte)((basePointer + X) & 0xFF)) | (Read((byte)((basePointer + X + 1) & 0xFF)) << 8));
+                addressBus = pointer;
             }
 
             void AddressingModeIndirectYIndexed()
