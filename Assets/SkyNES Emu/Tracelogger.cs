@@ -1,10 +1,10 @@
 using UnityEngine;
 
-namespace SkyNESEmu
+namespace SkyNESemu
 {
     public static class Tracelogger
     {
-        public static NESCPU EmulatorCPU;
+        public static CPU EmulatorCPU;
         public static bool Enabled = false;
 
         private static readonly string[] _opcodeNames = new string[256]
@@ -43,7 +43,7 @@ namespace SkyNESEmu
             "SED", "SBC", "NOP", "ISC", "NOP", "SBC", "INC", "ISC"
         };
 
-        public static void Attach(NESCPU cpu)
+        public static void Attach(CPU cpu)
         {
             EmulatorCPU = cpu;
         }
@@ -68,10 +68,10 @@ namespace SkyNESEmu
             if (Enabled)
             {
                 string line = string.Format(
-                    "PC:{0:X4} {1:X2} {2:X2} {3} A:{4:X2} X:{5:X2} Y:{6:X2} SP:{7:X2} {8} Cycles:{9}",
+                    "PC:{0:X4} {1:X2} {2} {3} A:{4:X2} X:{5:X2} Y:{6:X2} SP:{7:X2} {8} Cycles:{9}",
                     EmulatorCPU.PC,
                     opcode,
-                    EmulatorCPU.Read((ushort)(EmulatorCPU.PC + 1)),
+                    string.Join("-", EmulatorCPU.Read((ushort)(EmulatorCPU.PC + 1)).ToString("X2"), EmulatorCPU.Read((ushort)(EmulatorCPU.PC + 2)).ToString("X2")),
                     _opcodeNames[opcode],
                     EmulatorCPU.A,
                     EmulatorCPU.X,

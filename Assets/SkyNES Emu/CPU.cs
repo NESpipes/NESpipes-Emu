@@ -2,13 +2,18 @@ using System;
 using System.IO;
 using UnityEngine;
 
-namespace SkyNESEmu
+namespace SkyNESemu
 {
-    public class NESCPU : MonoBehaviour
+    [RequireComponent(typeof(PPU))]
+    public class CPU : MonoBehaviour
     {
         public const int INES_HEADER_SIZE = 0x10;
-        public const int RAM_SIZE = 0x0800;         // 2KB internal RAM
-        public const int RAM_ACCESS_SIZE = 0x2000;
+
+        public const int RAM_START_ADDRESS = 0x0000;
+        public const int RAM_ADDRESS_SIZE = 0x2000;
+        public const int RAM_SIZE = 0x0800;             // 2KB internal RAM
+        public const int RAM_MIRROR_MASK = 0x07FF;
+        public const int RAM_END_ADDRESS = RAM_START_ADDRESS + RAM_ADDRESS_SIZE;
 
         public const int ROM_START_ADDRESS = 0x8000;
         public const int ROM_PLACEHOLDER_SIZE = 0x8000;
@@ -17,6 +22,10 @@ namespace SkyNESEmu
         public const string ROM_FILE_EXTENSION = ".nes";
 
         public const int STACK_START_ADDRESS = 0x0100;
+
+        [SerializeField] private PPU _ppu;
+
+        [SerializeField] private uint terminateAt;
 
         public uint Cycles = 0;
 
@@ -169,13 +178,15 @@ namespace SkyNESEmu
 
         public byte[] iNESHeader = new byte[INES_HEADER_SIZE];
 
-        public byte[] _ram = new byte[RAM_SIZE];
+        public byte[] RAM = new byte[RAM_SIZE];
         private readonly byte[] _rom = new byte[ROM_PLACEHOLDER_SIZE];   // placeholder PRG ROM size
 
-        private bool _isRunning = true;
+        public bool IsRunning = true;
+        private ushort tempT;
 
-        public void Awake()
+        private void Awake()
         {
+            _ppu = GetComponent<PPU>();
             Tracelogger.Enable();
             Tracelogger.Attach(this);
             Reset();
@@ -184,18 +195,36 @@ namespace SkyNESEmu
 
         private void Run()
         {
-            while (_isRunning)
-                EmulateCycle();
+            while (IsRunning)
+                EmulateCPU();
         }
 
-        private void EmulateCycle()
+        private void EmulateCPU()
         {
+            bool prevNMI = _ppu.NMIState;
+            _ppu.NMIState = _ppu.EnableNMI && _ppu.VBlank;
+
+            if (!prevNMI && _ppu.NMIState)
+            {
+                Debug.LogWarning("NMI");
+                PushStack((byte)((PC >> 8) & 0xFF));
+                PushStack((byte)(PC & 0xFF));
+                FlagB = false;
+                PushStack((byte)(_statusFlags | 0x20)); // set B flags when pushing
+                PC = (ushort)(Read(0xFFFA) | (Read(0xFFFB) << 8));
+                Cycles += 7;
+                return;
+            }
+
+            if (Cycles >= terminateAt)
+                throw new Exception("DIE");
+
+            int cycles = 0;
             byte opcode = Read(PC);
             Tracelogger.LogOpcode(opcode);
             PC++;
 
-            int cycles = 0;
-            ushort addressBus;
+            ushort addressBus = 0;
             bool pageCrossed;
 
             switch (opcode)
@@ -211,7 +240,7 @@ namespace SkyNESEmu
                     break;
 
                 case 0x02:  // HTL (halt) - unofficial opcode
-                    _isRunning = false;
+                    IsRunning = false;
                     break;
 
                 case 0x05:  // ORA Zero Page (logical inclusive OR a register with zero page address)
@@ -310,6 +339,12 @@ namespace SkyNESEmu
                     AddressingModeZeroPage();
                     AND((byte)addressBus);
                     cycles = 2;
+                    break;
+
+                case 0x2C:  // BIT Absolute (bit test on absolute address)
+                    AddressingModeAbsolute();
+                    BIT(Read(addressBus));
+                    cycles = 4;
                     break;
 
                 case 0x2D:  // AND Absolute (logical AND a register with absolute address)
@@ -474,6 +509,7 @@ namespace SkyNESEmu
                     break;
 
                 case 0x78:  // SEI (set interrupt disable flag)
+                    Read(addressBus);
                     FlagI = true;
                     cycles = 2;
                     break;
@@ -562,6 +598,12 @@ namespace SkyNESEmu
                     FlagZ = A == 0;
                     FlagN = (A & 0x80) != 0;
                     cycles = 2;
+                    break;
+
+                case 0x99:  // STA Absolute, Y Indexed (store a register into absolute address plus y)
+                    AddressingModeAbsoluteYIndexed();
+                    Write(addressBus, A);
+                    cycles = 5;
                     break;
 
                 case 0x9A:  // TXS (transfer x register to stack pointer)
@@ -734,6 +776,11 @@ namespace SkyNESEmu
                     cycles = 2;
                     break;
 
+                case 0xEE:  // INC Absolute (increment absolute address)
+                    AddressingModeAbsolute();
+                    INC(addressBus, Read(addressBus));
+                    break;
+
                 case 0xF0:  // BEQ (branch if equal)
                     AddressingModeRelative();
                     if (FlagZ)
@@ -755,6 +802,14 @@ namespace SkyNESEmu
             }
 
             Cycles += (uint)cycles;
+
+            while (cycles > 0)
+            {
+                cycles--;
+                _ppu.EmulatePPU();
+                _ppu.EmulatePPU();
+                _ppu.EmulatePPU();
+            }
 
             void ASL(ushort address, byte value)
             {
@@ -957,6 +1012,7 @@ namespace SkyNESEmu
 
             Array.Copy(read, iNESHeader, INES_HEADER_SIZE);
             Array.Copy(read, INES_HEADER_SIZE, _rom, 0, ROM_PLACEHOLDER_SIZE);
+            Array.Copy(read, ROM_START_ADDRESS + INES_HEADER_SIZE, _ppu.CHRROM, 0, _ppu.CHRROM.Length);
 
             PC = (ushort)((Read(0xFFFC)) | Read(0xFFFD) << 8);
             FlagI = true;
@@ -969,8 +1025,59 @@ namespace SkyNESEmu
         {
             switch (address)
             {
-                case < RAM_ACCESS_SIZE:
-                    return _ram[address & 0x07FF];   // address mirrors back to 2KB over the 8KB range
+                case < RAM_END_ADDRESS:
+                    return RAM[address & RAM_MIRROR_MASK];   // address mirrors back to 2KB over the 8KB range
+
+                case < PPU.REGISTERS_END_ADDRESS:
+                    address = (ushort)(address & PPU.REGISTERS_MIRROR_MASK);
+                    switch (address)
+                    {
+                        case 0x2002:
+                            Debug.Log(_ppu.VBlank);
+                            byte status = (byte)(_ppu.VBlank ? 0x80 : 0);
+                            //status |= 0x40;
+                            if (_ppu.VBlank)
+                                Debug.LogError("HEHEHAH");
+                            _ppu.VBlank = false;
+                            _ppu.W = false;
+                            return status;
+
+                        case 0x2007:
+                            byte temp = _ppu.ReadBuf;
+
+                            switch (_ppu.V)
+                            {
+                                case < RAM_END_ADDRESS:
+                                    // pattern table read (CHR RAM)
+                                    _ppu.ReadBuf = _ppu.CHRROM[_ppu.V];
+                                    break;
+
+                                case < 0x3F00:
+                                    // nametable read
+                                    if ((iNESHeader[6] & 0x01) == 0)
+                                    {
+                                        // "horizontal mirroring"
+                                        _ppu.ReadBuf = _ppu.VRAM[(_ppu.V & 0x3FF) | (_ppu.V & 0x800) >> 1];
+                                    }
+                                    else
+                                    {
+                                        // "vertical mirroring"
+                                        _ppu.ReadBuf = _ppu.VRAM[_ppu.V & 0x7FF];
+                                    }
+                                    break;
+
+                                default:
+                                    // palette read
+                                    temp = _ppu.PaletteRAM[_ppu.V & ((_ppu.V & 3) == 0 ? 0x0F : 0x1F)];
+                                    break;
+                            }
+                            _ppu.V += (ushort)(_ppu.VRAMInc32 ? 32 : 1);
+                            _ppu.V &= 0x3FF;
+                            return temp;
+
+                        default:
+                            return 0;
+                    }
 
                 case >= ROM_START_ADDRESS:
                     return _rom[address - ROM_START_ADDRESS];
@@ -984,8 +1091,89 @@ namespace SkyNESEmu
         {
             switch (address)
             {
-                case < RAM_ACCESS_SIZE:
-                    _ram[address & 0x07FF] = value;     // address mirrors back to 2KB over the 8KB range
+                case < RAM_END_ADDRESS:
+                    RAM[address & RAM_MIRROR_MASK] = value;     // address mirrors back to 2KB over the 8KB range
+                    break;
+
+                case < PPU.REGISTERS_END_ADDRESS:
+                    address &= PPU.REGISTERS_MIRROR_MASK;
+                    switch (address)
+                    {
+                        case 0x2000:    // PPUCTRL
+                            _ppu.TargetNametable = (byte)(value & 3);
+                            _ppu.VRAMInc32 = (value & 0x04) != 0;
+                            _ppu.PatternTableSPR = (value & 0x08) != 0;
+                            _ppu.PatternTableBG = (value & 0x10) != 0;
+                            _ppu.Use8x16Sprites = (value & 0x20) != 0;
+                            _ppu.EnableNMI = (value & 0x80) != 0;
+                            break;
+
+                        case 0x2001:    // PPUMASK
+                            _ppu.Mask8pxBG = (value & 0x02) != 0;
+                            _ppu.Mask8pxSPR = (value & 0x04) != 0;
+                            _ppu.MaskRenderBG = (value & 0x08) != 0;
+                            _ppu.MaskRenderSPR = (value & 0x10) != 0;
+                            break;
+
+                        case 0x2002:    // PPUSTATUS
+                            break;
+
+                        case 0x2003:    // OAMADDR
+                            break;
+
+                        case 0x2004:    // OAMDATA
+                            break;
+
+                        case 0x2005:    // PPUSCROLL
+                            break;
+
+                        case 0x2006:    // PPUADDR
+                            if (!_ppu.W)
+                            {
+                                tempT = (ushort)((tempT & 0x00FF) | ((value & 0x3F) << 8));
+                            }
+                            else
+                            {
+                                _ppu.V = (ushort)((tempT & 0xFF00) | value);
+                                _ppu.T = _ppu.V;
+                            }
+                            _ppu.W = !_ppu.W;
+                            break;
+
+                        case 0x2007:    // PPUDATA
+                            switch (_ppu.V)
+                            {
+                                case < 0x2000:
+                                    // pattern table write (CHR RAM)
+                                    if (iNESHeader[5] == 0)
+                                    {
+                                        _ppu.CHRROM[_ppu.V] = value;
+                                    }
+                                    break;
+
+                                case < 0x3F00:
+                                    // nametable write
+                                    if ((iNESHeader[6] & 0x01) == 0)
+                                    {
+                                        // "horizontal mirroring"
+                                        _ppu.VRAM[(_ppu.V & 0x3FF) | (_ppu.V & 0x800) >> 1] = value;
+                                    }
+                                    else
+                                    {
+                                        // "vertical mirroring"
+                                        _ppu.VRAM[_ppu.V & 0x7FF] = value;
+                                    }
+                                    break;
+
+                                default:
+                                    // palette write
+                                    _ppu.PaletteRAM[_ppu.V & ((_ppu.V & 3) == 0 ? 0x0F : 0x1F)] = value;
+                                    break;
+                            }
+                            _ppu.V += (ushort)(_ppu.VRAMInc32 ? 32 : 1);
+                            _ppu.V &= 0x3FFF;
+                            break;
+                    }
                     break;
 
                 case >= ROM_START_ADDRESS:
