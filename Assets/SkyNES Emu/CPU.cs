@@ -35,7 +35,7 @@ namespace SkyNESemu
         public ushort PC;
 
         /// <summary>
-        /// The A Register.
+        /// The Accumulator (A Register).
         /// </summary>
         public byte A;
 
@@ -206,7 +206,7 @@ namespace SkyNESemu
 
             if (!prevNMI && _ppu.NMIState)
             {
-                Debug.LogWarning("NMI");
+                Debug.LogError("DOING NMI");
                 PushStack((byte)((PC >> 8) & 0xFF));
                 PushStack((byte)(PC & 0xFF));
                 FlagB = false;
@@ -243,7 +243,7 @@ namespace SkyNESemu
                     IsRunning = false;
                     break;
 
-                case 0x05:  // ORA Zero Page (logical inclusive OR a register with zero page address)
+                case 0x05:  // ORA Zero Page (logical inclusive OR accumulator with zero page address)
                     AddressingModeZeroPage();
                     ORA(Read(addressBus));
                     cycles = 3;
@@ -261,13 +261,13 @@ namespace SkyNESemu
                     cycles = 3;
                     break;
 
-                case 0x09:  // ORA Immediate (logical inclusive OR a register with operand)
+                case 0x09:  // ORA Immediate (logical inclusive OR accumulator with operand)
                     AddressingModeImmediate();
                     ORA((byte)addressBus);
                     cycles = 2;
                     break;
 
-                case 0x0A:  // ASL A (arithmetic shift left on a register)
+                case 0x0A:  // ASL A (arithmetic shift left on accumulator)
                     FlagC = (A & 0x80) != 0;
                     A <<= 1;
                     FlagZ = A == 0;
@@ -275,7 +275,7 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0x0D:  // ORA Absolute (logical inclusive OR a register with absolute address)
+                case 0x0D:  // ORA Absolute (logical inclusive OR accumulator with absolute address)
                     AddressingModeAbsolute();
                     ORA(Read(addressBus));
                     cycles = 4;
@@ -318,7 +318,7 @@ namespace SkyNESemu
                     cycles = 3;
                     break;
 
-                case 0x25:  // AND Zero Page (logical AND a register with zero page address)
+                case 0x25:  // AND Zero Page (logical AND accumulator with zero page address)
                     AddressingModeZeroPage();
                     AND(Read(addressBus));
                     cycles = 3;
@@ -335,10 +335,21 @@ namespace SkyNESemu
                     cycles = 4;
                     break;
 
-                case 0x29:  // AND Immediate (logical AND a register with operand)
+                case 0x29:  // AND Immediate (logical AND accumulator with operand)
                     AddressingModeZeroPage();
                     AND((byte)addressBus);
                     cycles = 2;
+                    break;
+
+                case 0x2A:  // ROL A (rotate left on accumulator)
+                    {    
+                        bool carryIn = (A & 0x80) != 0;
+                        A = (byte)((A << 1) | (FlagC ? 1 : 0));
+                        FlagC = carryIn;
+                        FlagZ = A == 0;
+                        FlagN = (A & 0x80) != 0;
+                        cycles = 1;
+                    }
                     break;
 
                 case 0x2C:  // BIT Absolute (bit test on absolute address)
@@ -347,7 +358,7 @@ namespace SkyNESemu
                     cycles = 4;
                     break;
 
-                case 0x2D:  // AND Absolute (logical AND a register with absolute address)
+                case 0x2D:  // AND Absolute (logical AND accumulator with absolute address)
                     AddressingModeAbsolute();
                     AND(Read(addressBus));
                     cycles = 4;
@@ -370,9 +381,27 @@ namespace SkyNESemu
                         cycles = 2;
                     break;
 
+                case 0x36:  // ROL Zero Page, X Indexed (rotate left on zero page address plus x indexed)
+                    AddressingModeZeroPageXIndexed();
+                    ROL(addressBus, Read(addressBus));
+                    cycles = 6;
+                    break;
+
                 case 0x38:  // SEC (set carry flag)
                     FlagC = true;
                     cycles = 2;
+                    break;
+
+                case 0x39:  // AND Absolute, Y Indexed (logical AND accumulator with absolute address plus y index)
+                    AddressingModeAbsoluteYIndexed();
+                    AND(Read(addressBus));
+                    cycles = 5;
+                    break;
+
+                case 0x3D:  // AND Absolute, X Indexed (logical AND accumulator with absolute address plus x index)
+                    AddressingModeAbsoluteXIndexed();
+                    AND(Read(addressBus));
+                    cycles = 5;
                     break;
 
                 case 0x40:  // RTI (return from interrupt)
@@ -385,7 +414,7 @@ namespace SkyNESemu
                     }
                     break;
 
-                case 0x45:  // EOR Zero Page (logical exclusive OR a register with zero page address)
+                case 0x45:  // EOR Zero Page (logical exclusive OR accumulator with zero page address)
                     AddressingModeZeroPage();
                     EOR(Read(addressBus));
                     cycles = 3;
@@ -397,18 +426,18 @@ namespace SkyNESemu
                     cycles = 5;
                     break;
 
-                case 0x48:  // PHA (push a register onto stack)
+                case 0x48:  // PHA (push accumulator onto stack)
                     PushStack(A);
                     cycles = 3;
                     break;
 
-                case 0x49:  // EOR Immediate (logical exclusive OR a register with operand)
+                case 0x49:  // EOR Immediate (logical exclusive OR accumulator with operand)
                     AddressingModeImmediate();
                     EOR((byte)addressBus);
                     cycles = 2;
                     break;
 
-                case 0x4A:  // LSR A (logical shift right on a register)
+                case 0x4A:  // LSR A (logical shift right on accumulator)
                     FlagC = (A & 0x01) != 0;
                     A >>= 1;
                     FlagZ = A == 0;
@@ -422,7 +451,7 @@ namespace SkyNESemu
                     cycles = 3;
                     break;
 
-                case 0x4D:  // EOR Absolute (logical exclusive OR a register with absolute address)
+                case 0x4D:  // EOR Absolute (logical exclusive OR accumulator with absolute address)
                     AddressingModeAbsolute();
                     EOR(Read(addressBus));
                     cycles = 4;
@@ -450,6 +479,12 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
+                case 0x59:  // EOR Absolute, Y Indexed (logical exclusive OR accumulator with absolute address plus y index)
+                    AddressingModeAbsoluteYIndexed();
+                    EOR(Read(addressBus));
+                    cycles = 5;
+                    break;
+
                 case 0x60:  // RTS (return from subroutine)
                     {
                         byte low = PullStack();
@@ -466,19 +501,28 @@ namespace SkyNESemu
                     cycles = 5;
                     break;
 
-                case 0x68:  // PLA (pull a register from stack)
+                case 0x68:  // PLA (pull accumulator from stack)
                     A = PullStack();
                     FlagZ = A == 0;
                     FlagN = (A & 0x80) != 0;
                     cycles = 4;
                     break;
 
-                case 0x69:  // ADC Immediate (add with carry operand to a register)
+                case 0x69:  // ADC Immediate (add with carry operand to accumulator)
                     AddressingModeImmediate();
                     ADC(Read(addressBus));
                     cycles = 2;
                     break;
 
+                case 0x6A:  // ROR A (rotate right on accumulator)
+                    {
+                        bool carryIn = (A & 0x01) != 0;
+                        A = (byte)((A >> 1) | (FlagC ? 0x80 : 0));
+                        FlagC = carryIn;
+                        FlagZ = A == 0;
+                        FlagN = (A & 0x80) != 0;
+                    }
+                    break;
                 case 0x6C:  // JMP Indirect (jump to indirect address)
                     AddressingModeIndirect();
                     PC = addressBus;
@@ -502,7 +546,7 @@ namespace SkyNESemu
                         cycles = 2;
                     break;
 
-                case 0x75:  // ADC Zero Page, X Indexed (add with carry zero page address plus x index to a register)
+                case 0x75:  // ADC Zero Page, X Indexed (add with carry zero page address plus x index to accumulator)
                     AddressingModeZeroPageXIndexed();
                     ADC(Read(addressBus));
                     cycles = 4;
@@ -514,7 +558,13 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0x81:  // STA Indirect, X Indexed (store a register into indirect address plus x index)
+                case 0x7E:  // ROR Absolute, X Indexed (rotate right on absolute address plus x index)
+                    AddressingModeAbsoluteXIndexed();
+                    ROR(addressBus, Read(addressBus));
+                    cycles = 7;
+                    break;
+
+                case 0x81:  // STA Indirect, X Indexed (store accumulator into indirect address plus x index)
                     AddressingModeIndirectXIndexed();
                     Write(addressBus, A);
                     cycles = 6;
@@ -526,7 +576,7 @@ namespace SkyNESemu
                     cycles = 3;
                     break;
 
-                case 0x85:  // STA Zero Page (store a register into zero page address)
+                case 0x85:  // STA Zero Page (store accumulator into zero page address)
                     AddressingModeZeroPage();
                     Write(addressBus, A);
                     cycles = 3;
@@ -545,7 +595,7 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0x8A:  // TXA (transfer x register to a register)
+                case 0x8A:  // TXA (transfer x register to accumulator)
                     A = X;
                     FlagZ = A == 0;
                     FlagN = (A & 0x80) != 0;
@@ -558,7 +608,7 @@ namespace SkyNESemu
                     cycles = 4;
                     break;
 
-                case 0x8D:  // STA Absolute (store a register into absolute address)
+                case 0x8D:  // STA Absolute (store accumulator into absolute address)
                     AddressingModeAbsolute();
                     Write(addressBus, A);
                     cycles = 4;
@@ -581,26 +631,26 @@ namespace SkyNESemu
                         cycles = 2;
                     break;
 
-                case 0x91:  // STA Indirect, Y Indexed (store a register into indirect address plus y index)
+                case 0x91:  // STA Indirect, Y Indexed (store accumulator into indirect address plus y index)
                     AddressingModeIndirectYIndexed();
                     Write(addressBus, A);
                     cycles = 6;
                     break;
 
-                case 0x95:  // STA Zero Page, X Indexed (store a register into zero page address plus x index)
+                case 0x95:  // STA Zero Page, X Indexed (store accumulator into zero page address plus x index)
                     AddressingModeZeroPageXIndexed();
                     Write(addressBus, A);
                     cycles = 4;
                     break;
 
-                case 0x98:  // TYA (transfer y register to a register)
+                case 0x98:  // TYA (transfer y register to accumulator)
                     A = Y;
                     FlagZ = A == 0;
                     FlagN = (A & 0x80) != 0;
                     cycles = 2;
                     break;
 
-                case 0x99:  // STA Absolute, Y Indexed (store a register into absolute address plus y)
+                case 0x99:  // STA Absolute, Y Indexed (store accumulator into absolute address plus y index)
                     AddressingModeAbsoluteYIndexed();
                     Write(addressBus, A);
                     cycles = 5;
@@ -609,6 +659,12 @@ namespace SkyNESemu
                 case 0x9A:  // TXS (transfer x register to stack pointer)
                     SP = X;
                     cycles = 2;
+                    break;
+
+                case 0x9D:  // STA Absolute, X Indexed (store accumulator into absolute address plus x index)
+                    AddressingModeAbsoluteXIndexed();
+                    Write(addressBus, A);
+                    cycles = 5;
                     break;
 
                 case 0xA0:  // LDY Immediate (load operand into y register)
@@ -627,7 +683,15 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0xA5:  // LDA Zero Page (load zero page address into a register)
+                case 0xA4:  // LDY Zero Page (load zero page address into y register)
+                    AddressingModeZeroPage();
+                    Y = Read(addressBus);
+                    FlagZ = Y == 0;
+                    FlagN = (Y & 0x80) != 0;
+                    cycles = 3;
+                    break;
+
+                case 0xA5:  // LDA Zero Page (load zero page address into accumulator)
                     AddressingModeZeroPage();
                     A = Read(addressBus);
                     FlagZ = A == 0;
@@ -635,14 +699,22 @@ namespace SkyNESemu
                     cycles = 3;
                     break;
 
-                case 0xA8:  // TAY (transfer a register to y register)
+                case 0xA6:  // LDX Zero Page (load zero page address into x register)
+                    AddressingModeZeroPage();
+                    X = Read(addressBus);
+                    FlagZ = X == 0;
+                    FlagN = (X & 0x80) != 0;
+                    cycles = 3;
+                    break;
+
+                case 0xA8:  // TAY (transfer accumulator to y register)
                     Y = A;
                     FlagZ = Y == 0;
                     FlagN = (Y & 0x80) != 0;
                     cycles = 2;
                     break;
 
-                case 0xA9:  // LDA Immediate (load operand into a register)
+                case 0xA9:  // LDA Immediate (load operand into accumulator)
                     AddressingModeImmediate();
                     A = Read(addressBus);
                     FlagZ = A == 0;
@@ -650,17 +722,33 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0xAA:  // TAX (transfer a register to x register)
+                case 0xAA:  // TAX (transfer accumulator to x register)
                     X = A;
                     FlagZ = X == 0;
                     FlagN = (X & 0x80) != 0;
                     cycles = 2;
                     break;
 
-                case 0xAD:  // LDA Absolute (load absolute address into a register)
+                case 0xAC:  // LDY Absolute (load absolute address into y register)
+                    AddressingModeAbsolute();
+                    Y = Read(addressBus);
+                    FlagZ = Y == 0;
+                    FlagN = (A & 0x80) != 0;
+                    cycles = 4;
+                    break;
+
+                case 0xAD:  // LDA Absolute (load absolute address into accumulator)
                     AddressingModeAbsolute();
                     A = Read(addressBus);
                     FlagZ = A == 0;
+                    FlagN = (A & 0x80) != 0;
+                    cycles = 4;
+                    break;
+
+                case 0xAE:  // LDX Absolute (load absolute address into x register)
+                    AddressingModeAbsolute();
+                    X = Read(addressBus);
+                    FlagZ = X == 0;
                     FlagN = (A & 0x80) != 0;
                     cycles = 4;
                     break;
@@ -676,7 +764,15 @@ namespace SkyNESemu
                         cycles = 2;
                     break;
 
-                case 0xB5:  // LDA Zero Page, X Indexed (load zero page address plus x index into a register)
+                case 0xB1:  // LDA Indirect, Y Indexed (load indirect address plus y index into accumulator)
+                    AddressingModeIndirectYIndexed();
+                    A = Read(addressBus);
+                    FlagZ = A == 0;
+                    FlagN = (A & 0x80) != 0;
+                    cycles = 6;
+                    break;
+
+                case 0xB5:  // LDA Zero Page, X Indexed (load zero page address plus x index into accumulator)
                     AddressingModeZeroPageXIndexed();
                     A = Read(addressBus);
                     FlagZ = A == 0;
@@ -689,7 +785,7 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0xB9:  // LDA Absolute, Y Indexed (load absolute address plus y index into a register)
+                case 0xB9:  // LDA Absolute, Y Indexed (load absolute address plus y index into accumulator)
                     AddressingModeAbsoluteYIndexed();
                     A = Read(addressBus);
                     FlagZ = A == 0;
@@ -704,11 +800,19 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0xBD:  // LDA Absolute, X Indexed (load absolute address plus x index into a register)
+                case 0xBD:  // LDA Absolute, X Indexed (load absolute address plus x index into accumulator)
                     AddressingModeAbsoluteXIndexed();
                     A = Read(addressBus);
                     FlagZ = A == 0;
                     FlagN = (A & 0x80) != 0;
+                    cycles = pageCrossed ? 5 : 4;
+                    break;
+
+                case 0xBE:  // LDX Absolute, Y Indexed (load absolute address plus y index into x register)
+                    AddressingModeAbsoluteYIndexed();
+                    X = Read(addressBus);
+                    FlagZ = X == 0;
+                    FlagN = (X & 0x80) != 0;
                     cycles = pageCrossed ? 5 : 4;
                     break;
 
@@ -718,6 +822,18 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
+                case 0xC5:  // CMP Zero Point (compare accumulator with zero point address)
+                    AddressingModeZeroPage();
+                    CMP(Read(addressBus));
+                    cycles = 3;
+                    break;
+
+                case 0xC6:  // DEC Zero Page (decrement zero point address)
+                    AddressingModeZeroPage();
+                    DEC(addressBus);
+                    cycles = 5;
+                    break;
+
                 case 0xC8:  // INY (increment y register)
                     Y++;
                     FlagZ = Y == 0;
@@ -725,7 +841,7 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0xC9:  // CMP Immediate (compare a register with operand)
+                case 0xC9:  // CMP Immediate (compare accumulator with operand)
                     CMP(Read(PC++));
                     cycles = 2;
                     break;
@@ -735,6 +851,18 @@ namespace SkyNESemu
                     FlagZ = X == 0;
                     FlagN = (X & 0x80) != 0;
                     cycles = 2;
+                    break;
+
+                case 0xCD:  // CMP Absolute (compare accumulator with absolute address)
+                    AddressingModeAbsolute();
+                    CMP(Read(addressBus));
+                    cycles = 4;
+                    break;
+
+                case 0xCE:  // DEC Absolute (decrement absolute address)
+                    AddressingModeAbsolute();
+                    DEC(addressBus);
+                    cycles = 6;
                     break;
 
                 case 0xD0:  // BNE (branch if not equal)
@@ -759,6 +887,12 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
+                case 0xE6:  // INC Zero Page (increment zero page address)
+                    AddressingModeZeroPage();
+                    INC(addressBus);
+                    cycles = 5;
+                    break;
+
                 case 0xE8:  // INX (increment x register)
                     X++;
                     FlagZ = X == 0;
@@ -766,7 +900,7 @@ namespace SkyNESemu
                     cycles = 2;
                     break;
 
-                case 0xE9:  // SBC Immediate (subtract with carry operand from a register)
+                case 0xE9:  // SBC Immediate (subtract with carry operand from accumulator)
                     AddressingModeImmediate();
                     SBC(Read(addressBus));
                     cycles = 2;
@@ -778,7 +912,8 @@ namespace SkyNESemu
 
                 case 0xEE:  // INC Absolute (increment absolute address)
                     AddressingModeAbsolute();
-                    INC(addressBus, Read(addressBus));
+                    INC(addressBus);
+                    cycles = 6;
                     break;
 
                 case 0xF0:  // BEQ (branch if equal)
@@ -795,6 +930,12 @@ namespace SkyNESemu
                 case 0xF8:  // SED (set decimal mode flag)
                     FlagD = true;
                     cycles = 2;
+                    break;
+
+                case 0xF9:  // SBC Absolute, Y Indexed (subtract with carry accumulator by absolute address plus y index from)
+                    AddressingModeAbsoluteYIndexed();
+                    SBC(Read(addressBus));
+                    cycles = 5;
                     break;
 
                 default:
@@ -849,12 +990,22 @@ namespace SkyNESemu
                 FlagN = (value & 0x80) != 0;
             }
 
-            void INC(ushort address, byte value)
+            void INC(ushort address)
             {
+                byte value = Read(address);
                 value++;
-                Write(address, value);
                 FlagZ = value == 0;
                 FlagN = (value & 0x80) != 0;
+                Write(address, value);
+            }
+
+            void DEC(ushort address)
+            {
+                byte value = Read(address);
+                value--;
+                FlagZ = value == 0;
+                FlagN = (value & 0x80) != 0;
+                Write(address, value);
             }
 
             void ORA(byte value)
@@ -1033,11 +1184,8 @@ namespace SkyNESemu
                     switch (address)
                     {
                         case 0x2002:
-                            Debug.Log(_ppu.VBlank);
                             byte status = (byte)(_ppu.VBlank ? 0x80 : 0);
-                            //status |= 0x40;
-                            if (_ppu.VBlank)
-                                Debug.LogError("HEHEHAH");
+                            status |= 0x40;
                             _ppu.VBlank = false;
                             _ppu.W = false;
                             return status;
@@ -1096,7 +1244,7 @@ namespace SkyNESemu
                     break;
 
                 case < PPU.REGISTERS_END_ADDRESS:
-                    address &= PPU.REGISTERS_MIRROR_MASK;
+                    address = (ushort)(address & PPU.REGISTERS_MIRROR_MASK);
                     switch (address)
                     {
                         case 0x2000:    // PPUCTRL
@@ -1106,6 +1254,7 @@ namespace SkyNESemu
                             _ppu.PatternTableBG = (value & 0x10) != 0;
                             _ppu.Use8x16Sprites = (value & 0x20) != 0;
                             _ppu.EnableNMI = (value & 0x80) != 0;
+                            if (value == 0x73) _ppu.EnableNMI = true;
                             break;
 
                         case 0x2001:    // PPUMASK
