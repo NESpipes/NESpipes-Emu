@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace SkyNESemu
+namespace SkyRetro
 {
     public static class Tracelogger
     {

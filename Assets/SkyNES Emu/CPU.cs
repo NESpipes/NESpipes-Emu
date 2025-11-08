@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using UnityEngine;
 
-namespace SkyNESemu
+namespace SkyRetro
 {
     [RequireComponent(typeof(PPU))]
     public class CPU : MonoBehaviour
@@ -206,7 +206,6 @@ namespace SkyNESemu
 
             if (!prevNMI && _ppu.NMIState)
             {
-                Debug.LogError("DOING NMI");
                 PushStack((byte)((PC >> 8) & 0xFF));
                 PushStack((byte)(PC & 0xFF));
                 FlagB = false;
@@ -1316,6 +1315,7 @@ namespace SkyNESemu
 
                                 default:
                                     // palette write
+                                    Debug.LogError(_ppu.V & ((_ppu.V & 3) == 0 ? 0x0F : 0x1F));
                                     _ppu.PaletteRAM[_ppu.V & ((_ppu.V & 3) == 0 ? 0x0F : 0x1F)] = value;
                                     break;
                             }
